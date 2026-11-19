@@ -39,6 +39,33 @@
 
 #include "pixhawk_platform.hpp"
 
+#include <type_traits>
+
+namespace
+{
+// PX4 appends _vN only for messages with a nonzero MESSAGE_VERSION.
+template<typename Message, typename = void>
+struct MessageVersion
+{
+  static constexpr uint32_t value = 0;
+};
+
+template<typename Message>
+struct MessageVersion<Message, std::void_t<decltype(Message::MESSAGE_VERSION)>>
+{
+  static constexpr uint32_t value = Message::MESSAGE_VERSION;
+};
+
+template<typename Message>
+std::string px4Topic(const std::string & topic)
+{
+  if constexpr (MessageVersion<Message>::value > 0) {
+    return topic + "_v" + std::to_string(MessageVersion<Message>::value);
+  }
+  return topic;
+}
+}  // namespace
+
 namespace as2_platform_pixhawk
 {
 
@@ -74,7 +101,7 @@ PixhawkPlatform::PixhawkPlatform(const rclcpp::NodeOptions & options)
 
   // declare PX4 subscribers
   px4_imu_sub_ = this->create_subscription<px4_msgs::msg::SensorCombined>(
-    fmu_prefix + "/fmu/out/sensor_combined", rclcpp::SensorDataQoS(),
+    px4Topic<px4_msgs::msg::SensorCombined>(fmu_prefix + "/fmu/out/sensor_combined"), rclcpp::SensorDataQoS(),
     std::bind(&PixhawkPlatform::px4imuCallback, this, std::placeholders::_1));
 
   // px4_timesync_sub_ = this->create_subscription<px4_msgs::msg::TimesyncStatus>(
@@ -84,19 +111,19 @@ PixhawkPlatform::PixhawkPlatform(const rclcpp::NodeOptions & options)
   //     });
 
   px4_vehicle_control_mode_sub_ = this->create_subscription<px4_msgs::msg::VehicleControlMode>(
-    fmu_prefix + "/fmu/out/vehicle_control_mode", rclcpp::SensorDataQoS(),
+    px4Topic<px4_msgs::msg::VehicleControlMode>(fmu_prefix + "/fmu/out/vehicle_control_mode"), rclcpp::SensorDataQoS(),
     std::bind(&PixhawkPlatform::px4VehicleControlModeCallback, this, std::placeholders::_1));
 
   px4_gps_sub_ = this->create_subscription<px4_msgs::msg::SensorGps>(
-    fmu_prefix + "/fmu/out/vehicle_gps_position", rclcpp::SensorDataQoS(),
+    px4Topic<px4_msgs::msg::SensorGps>(fmu_prefix + "/fmu/out/vehicle_gps_position"), rclcpp::SensorDataQoS(),
     std::bind(&PixhawkPlatform::px4GpsCallback, this, std::placeholders::_1));
 
   px4_battery_sub_ = this->create_subscription<px4_msgs::msg::BatteryStatus>(
-    fmu_prefix + "/fmu/out/battery_status", rclcpp::SensorDataQoS(),
+    px4Topic<px4_msgs::msg::BatteryStatus>(fmu_prefix + "/fmu/out/battery_status"), rclcpp::SensorDataQoS(),
     std::bind(&PixhawkPlatform::px4BatteryCallback, this, std::placeholders::_1));
 
   px4_odometry_sub_ = this->create_subscription<px4_msgs::msg::VehicleOdometry>(
-    fmu_prefix + "/fmu/out/vehicle_odometry", rclcpp::SensorDataQoS(),
+    px4Topic<px4_msgs::msg::VehicleOdometry>(fmu_prefix + "/fmu/out/vehicle_odometry"), rclcpp::SensorDataQoS(),
     std::bind(&PixhawkPlatform::px4odometryCallback, this, std::placeholders::_1));
 
   if (external_odom_) {
@@ -112,21 +139,21 @@ PixhawkPlatform::PixhawkPlatform(const rclcpp::NodeOptions & options)
 
   // declare PX4 publishers
   px4_offboard_control_mode_pub_ = this->create_publisher<px4_msgs::msg::OffboardControlMode>(
-    fmu_prefix + "/fmu/in/offboard_control_mode", rclcpp::SensorDataQoS());
+    px4Topic<px4_msgs::msg::OffboardControlMode>(fmu_prefix + "/fmu/in/offboard_control_mode"), rclcpp::SensorDataQoS());
   px4_trajectory_setpoint_pub_ = this->create_publisher<px4_msgs::msg::TrajectorySetpoint>(
-    fmu_prefix + "/fmu/in/trajectory_setpoint", rclcpp::SensorDataQoS());
+    px4Topic<px4_msgs::msg::TrajectorySetpoint>(fmu_prefix + "/fmu/in/trajectory_setpoint"), rclcpp::SensorDataQoS());
   px4_vehicle_attitude_setpoint_pub_ =
     this->create_publisher<px4_msgs::msg::VehicleAttitudeSetpoint>(
-    fmu_prefix + "/fmu/in/vehicle_attitude_setpoint", rclcpp::SensorDataQoS());
+    px4Topic<px4_msgs::msg::VehicleAttitudeSetpoint>(fmu_prefix + "/fmu/in/vehicle_attitude_setpoint"), rclcpp::SensorDataQoS());
   px4_vehicle_rates_setpoint_pub_ = this->create_publisher<px4_msgs::msg::VehicleRatesSetpoint>(
-    fmu_prefix + "/fmu/in/vehicle_rates_setpoint", rclcpp::SensorDataQoS());
+    px4Topic<px4_msgs::msg::VehicleRatesSetpoint>(fmu_prefix + "/fmu/in/vehicle_rates_setpoint"), rclcpp::SensorDataQoS());
   px4_vehicle_command_pub_ = this->create_publisher<px4_msgs::msg::VehicleCommand>(
-    fmu_prefix + "/fmu/in/vehicle_command", rclcpp::SensorDataQoS());
+    px4Topic<px4_msgs::msg::VehicleCommand>(fmu_prefix + "/fmu/in/vehicle_command"), rclcpp::SensorDataQoS());
   px4_visual_odometry_pub_ = this->create_publisher<px4_msgs::msg::VehicleOdometry>(
-    fmu_prefix + "/fmu/in/vehicle_visual_odometry", rclcpp::SensorDataQoS());
+    px4Topic<px4_msgs::msg::VehicleOdometry>(fmu_prefix + "/fmu/in/vehicle_visual_odometry"), rclcpp::SensorDataQoS());
 
   px4_manual_control_switches_pub_ = this->create_publisher<px4_msgs::msg::ManualControlSwitches>(
-    fmu_prefix + "/fmu/in/manual_control_switches", rclcpp::SensorDataQoS());
+    px4Topic<px4_msgs::msg::ManualControlSwitches>(fmu_prefix + "/fmu/in/manual_control_switches"), rclcpp::SensorDataQoS());
 }
 
 void PixhawkPlatform::configureSensors()
@@ -423,11 +450,9 @@ void PixhawkPlatform::resetTrajectorySetpoint()
 
 void PixhawkPlatform::resetAttitudeSetpoint()
 {
-  px4_attitude_setpoint_.pitch_body = NAN;
-  px4_attitude_setpoint_.roll_body = NAN;
-  px4_attitude_setpoint_.yaw_body = NAN;
-
-  px4_attitude_setpoint_.q_d = std::array<float, 4>{0, 0, 0, 1};
+  // PX4 1.17 uses q_d (w, x, y, z); the legacy Euler fields were removed.
+  px4_attitude_setpoint_.yaw_sp_move_rate = 0.0f;
+  px4_attitude_setpoint_.q_d = std::array<float, 4>{1, 0, 0, 0};
   px4_attitude_setpoint_.thrust_body = std::array<float, 3>{0, 0, -min_thrust_};
 }
 
@@ -772,9 +797,9 @@ void PixhawkPlatform::px4GpsCallback(const px4_msgs::msg::SensorGps::SharedPtr m
   }
   nav_sat_fix_msg.status.service = sensor_msgs::msg::NavSatStatus::SERVICE_GPS;  // DEFAULT
 
-  nav_sat_fix_msg.latitude = msg->lat;
-  nav_sat_fix_msg.longitude = msg->lon;
-  nav_sat_fix_msg.altitude = msg->alt_ellipsoid;
+  nav_sat_fix_msg.latitude = msg->latitude_deg;
+  nav_sat_fix_msg.longitude = msg->longitude_deg;
+  nav_sat_fix_msg.altitude = msg->altitude_ellipsoid_m;
 
   if (!std::isnan(msg->eph) && !std::isnan(msg->epv)) {
     // Position uncertainty --> Diagonal known
@@ -789,9 +814,7 @@ void PixhawkPlatform::px4GpsCallback(const px4_msgs::msg::SensorGps::SharedPtr m
     nav_sat_fix_msg.position_covariance = {-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     nav_sat_fix_msg.position_covariance_type = sensor_msgs::msg::NavSatFix::COVARIANCE_TYPE_UNKNOWN;
   }
-  nav_sat_fix_msg.latitude = nav_sat_fix_msg.latitude / 1e7;
-  nav_sat_fix_msg.longitude = nav_sat_fix_msg.longitude / 1e7;
-  nav_sat_fix_msg.altitude = nav_sat_fix_msg.altitude / 1e3;
+  // PX4 1.17 already supplies degrees and meters, as required by NavSatFix.
 
   gps_sensor_ptr_->updateData(nav_sat_fix_msg);
 }
@@ -807,9 +830,9 @@ void PixhawkPlatform::px4BatteryCallback(const px4_msgs::msg::BatteryStatus::Sha
   battery_msg.temperature = msg->temperature;
   battery_msg.current = msg->current_a;
   battery_msg.charge = NAN;
-  battery_msg.capacity = msg->capacity;
-  battery_msg.design_capacity = msg->design_capacity;
-  battery_msg.percentage = 100.0 * msg->remaining;
+  battery_msg.capacity = msg->capacity > 0 ? msg->capacity / 1000.0f : NAN;
+  battery_msg.design_capacity = NAN;  // Not provided by PX4 1.17 BatteryStatus.
+  battery_msg.percentage = msg->remaining >= 0.0f ? msg->remaining : NAN;
   // TODO(miferco97): config file with battery settings
   battery_msg.power_supply_status = sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_UNKNOWN;
   battery_msg.power_supply_health = sensor_msgs::msg::BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
@@ -819,8 +842,8 @@ void PixhawkPlatform::px4BatteryCallback(const px4_msgs::msg::BatteryStatus::Sha
   // battery_msg.cell_voltage = msg->voltage_cell_v;
   battery_msg.cell_voltage = {};
   battery_msg.cell_temperature = {};
-  battery_msg.location = '0';
-  battery_msg.serial_number = std::to_string(msg->serial_number);
+  battery_msg.location = "0";
+  battery_msg.serial_number = "";  // Serial number is not available in PX4 1.17.
 
   if (msg->warning >= 0) {
     RCLCPP_WARN_ONCE(this->get_logger(), "Battery warning #%d", msg->warning);
